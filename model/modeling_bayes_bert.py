@@ -173,6 +173,8 @@ class MultiHeadAttention(hk.Module):
         # n: number of heads
         # h: per-head hidden state
         attention_logits = jnp.einsum('bsnh,btnh->bnst', queries, keys) / np.sqrt(queries.shape[-1])
+        # attention_logits = jnp.matmul(queries, keys) / np.sqrt(queries.shape[-1]) # queries: bsnh (need: bnsh), keys: btnh (bnht, using jnp.transpose(keys, (0, 2, 3, 1)).shape)
+        # attention_logits = jnp.matmul(jnp.transpose(queries, (0,2,1,3)), jnp.transpose(keys, (0,2,3,1))) / np.sqrt(queries.shape[-1])
         # Add logits of mask tokens with a large negative number to prevent attending to those terms.
         attention_logits += mask * -2**32 
         attention_weights = jax.nn.softmax(attention_logits, axis=-1)
@@ -511,12 +513,16 @@ class BertForSequenceClassification(hk.Module):
         :params kl_mc_samples: number of Monte Carlo samples to compute the KL divergence.
         :params training: if True apply dropout.
         """
-        # Get keys
-        keys = jnp.array(hk.next_rng_keys(pred_mc_samples))
+        # # Get keys
+        # keys = jnp.array(hk.next_rng_keys(pred_mc_samples))
         
-        # Forward pass : (mc_samples, batch, max_len, n_outputs)
-        logits, kl_divs = self.vectorized_forward(
-            input_ids, token_type_ids, keys, self.config['regressor_drop_rate'], kl_mc_samples, training
-        )
+        # # Forward pass : (mc_samples, batch, max_len, n_outputs)
+        # logits, kl_divs = self.vectorized_forward(
+        #     input_ids, token_type_ids, keys, self.config['regressor_drop_rate'], kl_mc_samples, training
+        # )
 
-        return logits, kl_divs.mean()
+        # return logits, kl_divs.mean()
+        print(input_ids.shape, token_type_ids.shape)
+        return self.forward(input_ids, 
+                            token_type_ids, hk.next_rng_key(), 
+                            self.config['regressor_drop_rate'], kl_mc_samples, training)

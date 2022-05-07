@@ -12,7 +12,7 @@ configuration = {
 
     # Transformer hyperparameters
     'n_layers': 12,
-    'max_length': 512, #40,
+    'max_length': 128, #40,
     'embed_dropout_rate': 0.1,
     'fully_connected_drop_rate': 0.1,
     'attention_drop_rate': 0.1,

@@ -1,1 +1,3 @@
 env_jax_2 python train.py --config_name mle --task_name sst2 --priors gaussian --max_seq_length 128
+
+python train.py --config_name mle --task_name sst2 --priors gaussian --max_seq_length 512 --model_name_or_path bert-base-cased

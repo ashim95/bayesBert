@@ -18,13 +18,14 @@ import evaluation
 from jax.experimental import optimizers
 from configuration import configuration
 from dataloader import DataLoader
-from model.modeling_bayes_bert import BertForSequenceClassification
+# from model.modeling_bayes_bert import BertForSequenceClassification
+from model.modeling_bayes_bert_wo_dropout import BertForSequenceClassification
 from experiments import ood_entropy_split, data_uncertainty, pred_ambiguity_from_entropy
 from pprint import pprint
 from utils import get_dataset, glue_train_data_collator, glue_eval_data_collator, set_pretrained_params
 
 from tqdm import tqdm
-#os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false" 
+#os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 
 jax.config.update("jax_debug_nans", True)
@@ -44,27 +45,27 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-# Configuration 
+# Configuration
 parser.add_argument(
-    '--config_name', required=True, default='mle', 
+    '--config_name', required=True, default='mle',
     help="Name of the configuration: mle, embedding, attention, final, full."
 )
 parser.add_argument(
-    "--perform_experiments", type=str2bool, default=True, 
+    "--perform_experiments", type=str2bool, default=True,
     help="Perform experiments or not."
 )
 # Save model
 parser.add_argument(
-    "--save_model", type=str2bool, default=True, 
+    "--save_model", type=str2bool, default=True,
     help="Save model or not."
 )
 parser.add_argument(
-    "--load_pretrained", type=str2bool, default=False, 
+    "--load_pretrained", type=str2bool, default=False,
     help="Load pretrained model or not."
 )
-# Sampling arguments 
+# Sampling arguments
 parser.add_argument(
-    "--pred_mc_samples", type=int, default=configuration['pred_mc_samples'], 
+    "--pred_mc_samples", type=int, default=configuration['pred_mc_samples'],
     help="Number of samples to compute predictive distribution."
 )
 parser.add_argument(
@@ -73,26 +74,26 @@ parser.add_argument(
 )
 # Training arguments
 parser.add_argument(
-    "--n_epochs", type=int, default=configuration['n_epochs'], 
+    "--n_epochs", type=int, default=configuration['n_epochs'],
     help="Number of training epochs."
 )
 # Variationial Inference argument
 parser.add_argument(
-    "--priors", type=str, required=True, 
+    "--priors", type=str, required=True,
     help="Type of priors to use: gaussian or improved."
 )
 
 # Dataset Arguments
 parser.add_argument(
-    "--task_name", type=str, required=True, 
+    "--task_name", type=str, required=True,
     help="The GLUE task name."
 )
 parser.add_argument(
-    "--data_dir", type=str, required=False, 
+    "--data_dir", type=str, required=False,
     help="The input data dir. Should contain the .tsv files (or other data files) for the task."
 )
 parser.add_argument(
-    "--cache_dir", type=str, required=False, default=None, 
+    "--cache_dir", type=str, required=False, default=None,
     help="The cache_dir data dir. "
 )
 parser.add_argument(
@@ -131,7 +132,7 @@ configuration['kl_mc_samples'] = ARGS.kl_mc_samples
 configuration['n_epochs'] = ARGS.n_epochs
 
 if ARGS.priors == 'gaussian':
-    # Embeddings 
+    # Embeddings
     configuration['emb_prior_distribution'] = "gaussian"
     configuration['emb_prior_params'] = {"loc":0, "scale":1e0}
     # Transformer block 1
@@ -219,7 +220,7 @@ else:
 
 def build_model(configuration, key):
     """
-    Build the Bayesian Transformer. 
+    Build the Bayesian Transformer.
     :params configuration: configuration dictionary.
     :params key: random key.
     """
@@ -249,7 +250,7 @@ def build_model(configuration, key):
         print(f"Loading saved weights from {configuration['save_path']}", flush=True)
         with open(configuration["save_path"],"rb") as f:
             transformer_params = pickle.load(f)
-    
+
     return transformer, transformer_params
 
 def load_optimizers(configuration, transformer_params):
@@ -258,7 +259,7 @@ def load_optimizers(configuration, transformer_params):
     :params configuration: configuration dictionary.
     :params transformer_params: Transformer parameters.
     """
-    # Define optimizers 
+    # Define optimizers
     def make_lr_schedule(warmup_steps, d_model):
         """
         Define a triangular learning-rate schedule as in Attention is All you Need.
@@ -282,7 +283,7 @@ def load_optimizers(configuration, transformer_params):
 
     return opt_init, opt_update, get_params, opt_state
 
-# Training functions 
+# Training functions
 def evaluate(params, step, key, dataloader):
     """
     Evaluate model during training.
@@ -297,8 +298,8 @@ def evaluate(params, step, key, dataloader):
     # Compute metrics
     metrics = np.stack([loss_eval(params, key, x, y) for x,y in dataloader])
     kl_div, cross_entropy, ece_mean, accuracy, mean_entropy = jnp.sum(metrics, axis=0)
-    n_distributions = np.prod(dataloader.dev['text'].shape[:3]) 
-    n_samples = np.prod(dataloader.dev['text'].shape[:2]) 
+    n_distributions = np.prod(dataloader.dev['text'].shape[:3])
+    n_samples = np.prod(dataloader.dev['text'].shape[:2])
     cross_entropy /= n_samples
     kl_div /= dataloader.dev['text'].shape[0]
     ece_mean /= dataloader.dev['text'].shape[0]*dataloader.dev['text'].shape[2] # divide by # time steps
@@ -315,7 +316,7 @@ def ece(probs, labels):
     """
     Computes the Expected Calibration Error (ECE).
     :params probs: vector of probabilies. Has shape [n_examples, n_classes].
-    :params labels: labels of targets. Has shape [n_class] 
+    :params labels: labels of targets. Has shape [n_class]
     """
     n_bins=10
 
@@ -352,7 +353,7 @@ def ece(probs, labels):
 @jax.jit
 def loss_eval(params, key, x, y):
     """
-    Compute evaluation metrics. 
+    Compute evaluation metrics.
     :params params: Transformer model parameters.
     :params key: random key.
     :params x: model input tensor.
@@ -372,7 +373,7 @@ def loss_eval(params, key, x, y):
 @jax.jit
 def loss_fn(params, key, batch, n_samples):
     """
-    Loss function. 
+    Loss function.
     :params params: Transformer model parameters.
     :params key: random key.
     :params x: model input tensor.
@@ -380,7 +381,7 @@ def loss_fn(params, key, batch, n_samples):
     :params n_samples: number of training samples.
     """
     # Forward pass : (mc_samples, batch, max_len, n_outputs)
-    logits, kl_div = transformer.apply(params, key, batch['input_ids'], batch['token_type_ids'], training=True) 
+    logits, kl_div = transformer.apply(params, key, batch['input_ids'], batch['token_type_ids'], training=True)
     # print(logits.shape) logits.shape = mc_samples, batch, num_classes
     # sss
     labels = jax.nn.one_hot(batch.pop("labels"), logits.shape[-1])
@@ -405,7 +406,7 @@ def update(step, opt_state, batch, key, n_samples):
 
     return opt_state, value
 
-# Training loop 
+# Training loop
 def train_old(opt_state, key, dataloader_dict, n_epochs):
     """
     Train model.
@@ -482,7 +483,6 @@ def train(opt_state, key, dataset_dict, n_epochs):
             #     key, sub_key = jax.random.split(key)
             #     params = get_params(opt_state)
             #     evaluate(params, epoch, sub_key, dataloader)
-    ssss
     return opt_state
 
 
@@ -499,7 +499,7 @@ if __name__ == "__main__":
     print("Loading the data...", flush=True)
     train_dataset, eval_dataset, test_dataset, num_labels = get_dataset(ARGS)
     configuration["num_labels"] = num_labels
-    
+
     # print(len(train_dataset), len(eval_dataset))
     # print(list(train_dataset)[0])
     # dataloader = DataLoader(configuration)
@@ -514,7 +514,7 @@ if __name__ == "__main__":
         'test': test_dataset,
     }
 
-    # Build model 
+    # Build model
     print("Loading model...", flush=True)
     transformer, transformer_params = build_model(configuration, sub_key)
     # print(transformer)
@@ -529,7 +529,7 @@ if __name__ == "__main__":
     # print(jnp.shape(transformer_params['BertForSequenceClassification/~/BertModule/~/bert_embeddings/layer_norm']['scale']))
     # print(jnp.shape(transformer_params['BertForSequenceClassification/~/BertModule/~/bert_embeddings/layer_norm']['offset']))
     # aaa
-    # set_pretrained_params(ARGS, transformer_params)
+    set_pretrained_params(ARGS, transformer_params)
     # print(transformer_params['BertForSequenceClassification/~/BertModule/~/bert_embeddings/~/word_embeddings/~/LearnableEmbedding/embed'].keys())
     # print(jnp.sum(transformer_params['BertForSequenceClassification/~/BertModule/~/bert_embeddings/~/word_embeddings/~/LearnableEmbedding/embed']))
     # pprint(transformer_params.keys())
@@ -540,17 +540,17 @@ if __name__ == "__main__":
     from jax.lib import xla_bridge
     print(xla_bridge.get_backend().platform)
 
-    # Load optimizers 
+    # Load optimizers
     print("Define optimizers...", flush=True)
     opt_init, opt_update, get_params, opt_state = load_optimizers(configuration, transformer_params)
     # print(get_params(opt_state).keys())
-    
-    # Train 
+
+    # Train
     print("Training model...", flush=True)
     n_epochs = configuration["n_epochs"]
-    opt_state = train(opt_state, key, dataset_dict, n_epochs=n_epochs) 
+    opt_state = train(opt_state, key, dataset_dict, n_epochs=n_epochs)
 
-    # Save model 
+    # Save model
     if configuration["save_model"]:
         print(f"Saving model weigths at {configuration['save_path']}", flush=True)
         with open(configuration["save_path"],"wb") as f:
@@ -563,7 +563,7 @@ if __name__ == "__main__":
     dataloader.change_split("test")
     evaluation.evaluate(dataloader, transformer, params, sub_key, configuration, n=3)
 
-    # Perform experiments 
+    # Perform experiments
     if ARGS.perform_experiments:
         print("Performing experiments...", flush=True)
         # pred_ambiguity_from_entropy(dataloader, transformer, params, sub_key, configuration)
