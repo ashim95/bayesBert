@@ -1,0 +1,1 @@
+python calibration_example_bert.py --task_name sst2 --do_eval --max_seq_length 128  --per_device_train_batch_size 32 --learning_rate 2e-5 --num_hidden_layers 1 --output_dir ../../models/sst2/bert_base_cased_layers_1/ --model_name_or_path ../../models/sst2/bert_base_cased_layers_1/
